@@ -1,9 +1,22 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
+import pandas as pd
+import numpy as np
+import pickle as pkl
+from load_lstm_data import load_lstm_data
+#import torch
+#import torch.nn as nn
+#import torch.nn.functional as F
+#import torch.optim as optim
 
-torch.manual_seed(1)
+#torch.manual_seed(1)
+
+#import the test and training data as pandas dataframes for now.
+data_dir = '/discover/nobackup/jframe/data/pals/full_data/'
+site = 2
+year = 2000
+
+data_dict = load_lstm_data(data_dir, site, year)
+print(data_dict)
+exit()
 
 lstm = nn.LSTM(3, 3)  # Input dim is 3, output dim is 3
 inputs = [torch.randn(1, 3) for _ in range(10)]  # make a sequence of length 5

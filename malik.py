@@ -2,7 +2,7 @@
 # FROM : https://stackabuse.com/time-series-prediction-using-lstm-with-pytorch-in-python/
 # AND  : https://stackabuse.com/introduction-to-pytorch-for-classification/
 
-import torchi
+import torch
 import torch.nn as nn
 
 import seaborn as sns
@@ -47,7 +47,7 @@ test_data = all_data[-test_data_size:]
 # normalizes our data using the min/max scaler 
 # with minimum and maximum values of -1 and 1, respectively
 scaler = MinMaxScaler(feature_range=(-1, 1))
-train_data_normalized = scaler.fit_transform(train_data .reshape(-1, 1))
+train_data_normalized = scaler.fit_transform(train_data.reshape(-1, 1))
 
 # convert our dataset into tensors since PyTorch models are trained using tensors.
 train_data_normalized = torch.FloatTensor(train_data_normalized).view(-1)
