@@ -38,11 +38,11 @@ X_train = torch.Tensor(scaler.fit_transform(df["forcing_train"]))
 input_feature_size = X_train.shape[1]
 #X_train = [torch.tensor(list(np.array(df["forcing_train"])[i,:])) for i in range(X_train.shape[0])]
 X_val = scaler.transform(df["forcing_val"])
-X_test = scaler.transform(df["forcing_test"])
+X_test = torch.Tensor(scaler.transform(df["forcing_test"]))
 y_train = torch.Tensor(scaler.fit_transform(df["obs_train"]))
 #y_train = [torch.tensor(list(np.array(df["forcing_train"])[i,:])) for i in range(y_train.shape[0])]
 y_val = scaler.transform(df["obs_val"])
-y_test = scaler.transform(df["obs_test"])
+y_test = torch.Tensor(scaler.transform(df["obs_test"]))
 
 class LSTM(nn.Module):
     def __init__(self, input_size: int, hidden_size: int):
@@ -106,29 +106,17 @@ class LSTM(nn.Module):
         hidden_sequence = torch.cat(hidden_sequence, dim=0)
         hidden_sequence = hidden_sequence.transpose(0,1).contiguous()
         return hidden_sequence, (h_t, c_t)
-class Net(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.embedding = nn.Embedding(len(encoder.vocab)+1, 32)
-        self.lstm = CustomLSTM(32,32)#nn.LSTM(32, 32, batch_first=True)
-        self.fc1 = nn.Linear(32, 2)
-                                                
-    def forward(self, x):
-        x_ = self.embedding(x)
-        x_, (h_n, c_n) = self.lstm(x_)
-        x_ = (x_[:, -1, :])
-        x_ = self.fc1(x_)
-        return x_
-classifier = Net().to(device)
 
 model = nn.LSTM(input_feature_size, hidden_state_size)
 
 # set up the training data 
 ds_train = torch.utils.data.TensorDataset(X_train, y_train)
 train_loader = torch.utils.data.DataLoader(ds_train, batch_size=batch_size, shuffle=True)
+ds_test = torch.utils.data.TensorDataset(X_test, y_test)
+test_loader = torch.utils.data.DataLoader(ds_test, batch_size=batch_size, shuffle=True)
 
 # Loss and optimizer
-criterion = nn.CrossEntropyLoss()
+criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
 epoch_bar = tqdm(range(num_epochs),desc="Training", position=0, total=2)
@@ -139,18 +127,28 @@ for epoch in epoch_bar:
                      position=1,
                      total=len(train_loader))
 
-    for i, (datapoints, labels) in batch_bar:
+    for i, (data, targets) in batch_bar:
         optimizer.zero_grad()
-        predictions = classifier(datapoints.long().to(device))
-        loss = criterion(predictions, labels.to(device))
+
+        data = data.to(device=device).squeeze(1)
+        targets = targets.to(device=device)
+        # Forward
+        output, hidden = model(data.unsqueeze(1))
+        output = output[:,0,0]
+        loss = criterion(output,targets)
+
+        #backward
+        optimizer.zero_grad()
         loss.backward()
+
+        # gradient descent or adam step
         optimizer.step()
+
         if (i+1) % 50 == 0:
             acc=0
             with torch.no_grad():
-                for i, (datapoints_, labels_) in enumerate(test_loader):
-                    predictions = classifier(datapoints_.to(device))
-                    acc += (predictions.argmax(dim=1) == labels_.to(device)).float().sum().cpu().item()
+                for i, (data_, targets_) in enumerate(test_loader):
+                    acc += (data_.argmax(dim=1) == targets_.to(device)).float().sum().cpu().item()
             acc /= len(X_test)
         batch_bar.set_postfix(loss=loss.cpu().item(),
                               accuracy="{:.2f}".format(acc),

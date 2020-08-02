@@ -4,7 +4,7 @@ import numpy as np
 import pickle as pkl
 
 def split_test_train(data_dict, year_test, year_val):
-    obs_drop = ['year','day','hour', 'x1', 'x2', 'p']
+    obs_drop = ['year','day','hour', 'x1', 'x2', 'p', 'lh']
     data_dict['obs_train'] = data_dict['obs'][~data_dict['obs']['year'].isin([year_test,year_val])]
     data_dict['obs_test'] = data_dict['obs'].loc[data_dict['obs']['year'] == year_test]
     data_dict['obs_val'] = data_dict['obs'].loc[data_dict['obs']['year'] == year_val]
