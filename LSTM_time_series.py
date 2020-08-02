@@ -31,18 +31,13 @@ year_val = 2006
 df = load_lstm_data(data_dir, site, year_test, year_val)
 
 scaler = StandardScaler()
-datas = ["forcing_train", "forcing_val", "forcing_test", "obs_train","obs_val","obs_test"] 
 X_train = torch.Tensor(scaler.fit_transform(df["forcing_train"]))
-#print(type(X_train))
-#exit()
 input_feature_size = X_train.shape[1]
-#X_train = [torch.tensor(list(np.array(df["forcing_train"])[i,:])) for i in range(X_train.shape[0])]
-X_val = scaler.transform(df["forcing_val"])
-X_test = torch.Tensor(scaler.transform(df["forcing_test"]))
+X_val = torch.Tensor(scaler.fit_transform(df["forcing_val"]))
+X_test = torch.Tensor(scaler.fit_transform(df["forcing_test"]))
 y_train = torch.Tensor(scaler.fit_transform(df["obs_train"]))
-#y_train = [torch.tensor(list(np.array(df["forcing_train"])[i,:])) for i in range(y_train.shape[0])]
-y_val = scaler.transform(df["obs_val"])
-y_test = torch.Tensor(scaler.transform(df["obs_test"]))
+y_val = torch.Tensor(scaler.fit_transform(df["obs_val"]))
+y_test = torch.Tensor(scaler.fit_transform(df["obs_test"]))
 
 class LSTM(nn.Module):
     def __init__(self, input_size: int, hidden_size: int):
@@ -114,6 +109,8 @@ ds_train = torch.utils.data.TensorDataset(X_train, y_train)
 train_loader = torch.utils.data.DataLoader(ds_train, batch_size=batch_size, shuffle=True)
 ds_test = torch.utils.data.TensorDataset(X_test, y_test)
 test_loader = torch.utils.data.DataLoader(ds_test, batch_size=batch_size, shuffle=True)
+ds_val = torch.utils.data.TensorDataset(X_val, y_val)
+val_loader = torch.utils.data.DataLoader(ds_val, batch_size=batch_size, shuffle=True)
 
 # Loss and optimizer
 criterion = nn.MSELoss()
@@ -131,7 +128,8 @@ for epoch in epoch_bar:
         optimizer.zero_grad()
 
         data = data.to(device=device).squeeze(1)
-        targets = targets.to(device=device)
+        targets = targets.to(device=device).squeeze(1)
+
         # Forward
         output, hidden = model(data.unsqueeze(1))
         output = output[:,0,0]
@@ -144,18 +142,22 @@ for epoch in epoch_bar:
         # gradient descent or adam step
         optimizer.step()
 
-        if (i+1) % 50 == 0:
-            acc=0
-            with torch.no_grad():
-                for i, (data_, targets_) in enumerate(test_loader):
-                    acc += (data_.argmax(dim=1) == targets_.to(device)).float().sum().cpu().item()
-            acc /= len(X_test)
         batch_bar.set_postfix(loss=loss.cpu().item(),
-                              accuracy="{:.2f}".format(acc),
+                              RMSE="{:.2f}".format(loss**(1/2)),
                               epoch=epoch)
         batch_bar.update()
+
+    with torch.no_grad():
+        test_rmse_list = []
+        for i, (data_, targets_) in enumerate(val_loader):
+            data_ = data_.to(device=device).squeeze(1)
+            targets_ = targets_.to(device=device).squeeze(1)
+            y_pred, hidden_ = model(data_.unsqueeze(1))
+            y_pred = y_pred[:,0,0]
+            MSE_ = criterion(y_pred,targets_)
+            test_rmse_list.append(MSE_**(1/2))
     epoch_bar.set_postfix(loss=loss.cpu().item(),
-                          accuracy="{:.2f}".format(acc),
+                          RMSE="{:.2f}".format(np.mean(np.array(test_rmse_list))),
                           epoch=epoch)
     batch_bar.update()
 
