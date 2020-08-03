@@ -2,7 +2,7 @@
 from load_lstm_data import load_lstm_data
 import glob
 import math
-import matplotlib
+import matplotlib as plt
 import numpy as np
 import pandas as pd
 import sklearn
@@ -18,7 +18,7 @@ from tqdm import tqdm
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(1)
 hidden_state_size = 3
-num_epochs = 2
+num_epochs = 1
 batch_size = 64
 learning_rate = 0.001
 
@@ -33,11 +33,11 @@ df = load_lstm_data(data_dir, site, year_test, year_val)
 scaler = StandardScaler()
 X_train = torch.Tensor(scaler.fit_transform(df["forcing_train"]))
 input_feature_size = X_train.shape[1]
-X_val = torch.Tensor(scaler.fit_transform(df["forcing_val"]))
-X_test = torch.Tensor(scaler.fit_transform(df["forcing_test"]))
+X_val = torch.Tensor(scaler.transform(df["forcing_val"]))
+X_test = torch.Tensor(scaler.transform(df["forcing_test"]))
 y_train = torch.Tensor(scaler.fit_transform(df["obs_train"]))
-y_val = torch.Tensor(scaler.fit_transform(df["obs_val"]))
-y_test = torch.Tensor(scaler.fit_transform(df["obs_test"]))
+y_val = torch.Tensor(scaler.transform(df["obs_val"]))
+y_test = torch.Tensor(scaler.transform(df["obs_test"]))
 
 class LSTM(nn.Module):
     def __init__(self, input_size: int, hidden_size: int):
@@ -64,6 +64,11 @@ class LSTM(nn.Module):
         self.U_o = nn.Parameter(torch.Tensor(input_size, hidden_size))
         self.V_o = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
         self.b_o = nn.Parameter(torch.Tensor(hidden_size))
+
+        # Define fully connected layer from input size and output size
+        # The output size will be the number of features to predict. more than 1 for multi-output.
+        # Regression layer, predict output as linear reduction of hidden states.
+        
 
         self.init_weights()
 
@@ -97,6 +102,8 @@ class LSTM(nn.Module):
 
             hidden_sequence.append(h_t.unsqueeze(0))
 
+            # Get sequence from fully conected layer.
+
         # reshape hidden sequence p/ retornar
         hidden_sequence = torch.cat(hidden_sequence, dim=0)
         hidden_sequence = hidden_sequence.transpose(0,1).contiguous()
@@ -113,7 +120,9 @@ ds_val = torch.utils.data.TensorDataset(X_val, y_val)
 val_loader = torch.utils.data.DataLoader(ds_val, batch_size=batch_size, shuffle=True)
 
 # Loss and optimizer
-criterion = nn.MSELoss()
+criterion = nn.MSELoss()  # Use costome loss function. 
+#Use NSE rather than MSE, precalculate and cary through the varience
+
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
 epoch_bar = tqdm(range(num_epochs),desc="Training", position=0, total=2)
@@ -132,8 +141,15 @@ for epoch in epoch_bar:
 
         # Forward
         output, hidden = model(data.unsqueeze(1))
-        output = output[:,0,0]
-        loss = criterion(output,targets)
+        print(output.shape)
+        exit()
+        
+        # TODO:
+        ######################################
+        # Add regression layer in forward pass
+
+        mask = (targets > 0)
+        loss = criterion(output[mask],targets[mask])
 
         #backward
         optimizer.zero_grad()
@@ -161,24 +177,10 @@ for epoch in epoch_bar:
                           epoch=epoch)
     batch_bar.update()
 
-
-
-
-# OLD OLD OLD OLD
-##inputs = [torch.tensor(list(train_forc[0:hidden_state_size,i])) for i in range(train_forc.shape[1])]
-#inputs = [torch.tensor(list(np.array(df["forcing_train"])[i,:])) for i in range(train_forc.shape[0])]
-#
-## initialize the hidden state.
-#hidden = (torch.randn(1, 1, hidden_state_size),
-#          torch.randn(1, 1, hidden_state_size))
-#
-#inputs = torch.cat(inputs).view(len(inputs), 1, -1)
-#hidden = (torch.randn(1, 1, hidden_state_size), torch.randn(1, 1, hidden_state_size))  # clean out hidden state
-#out, hidden = lstm(inputs, hidden)
-#print('out')
-#print(out)
-#print('hidden')
-#print(hidden)
-
-
-
+y_pred, hidden_ = model(X_val.unsqueeze(1))
+y_pred = y_pred[:,0,0]
+print(type(y_pred))
+y_test_plot = (np.array(y_pred) * df["obs_val"].stdev()) + df["obs_val"].mean()
+plt.plot(y_test_plot)
+plt.plot(np.array(df["obs_val"]))
+plt.close()
