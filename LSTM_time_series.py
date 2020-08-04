@@ -2,7 +2,7 @@
 from load_lstm_data import load_lstm_data
 import glob
 import math
-import matplotlib as plt
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sklearn
@@ -18,7 +18,8 @@ from tqdm import tqdm
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(1)
 hidden_state_size = 3
-num_epochs = 1
+num_epochs = 30
+num_features = 1
 batch_size = 64
 learning_rate = 0.001
 
@@ -65,10 +66,11 @@ class LSTM(nn.Module):
         self.V_o = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
         self.b_o = nn.Parameter(torch.Tensor(hidden_size))
 
+        ###########################################################################################
         # Define fully connected layer from input size and output size
         # The output size will be the number of features to predict. more than 1 for multi-output.
         # Regression layer, predict output as linear reduction of hidden states.
-        
+        self.fc = nn.Linear(hidden_size * input_size, n_features) # N x hidden_size x features  
 
         self.init_weights()
 
@@ -102,11 +104,13 @@ class LSTM(nn.Module):
 
             hidden_sequence.append(h_t.unsqueeze(0))
 
-            # Get sequence from fully conected layer.
-
         # reshape hidden sequence p/ retornar
         hidden_sequence = torch.cat(hidden_sequence, dim=0)
         hidden_sequence = hidden_sequence.transpose(0,1).contiguous()
+
+        # Get sequence from fully conected layer.
+        hidden_sequence = self.fc(hidden_sequence)
+
         return hidden_sequence, (h_t, c_t)
 
 model = nn.LSTM(input_feature_size, hidden_state_size)
@@ -137,19 +141,13 @@ for epoch in epoch_bar:
         optimizer.zero_grad()
 
         data = data.to(device=device).squeeze(1)
-        targets = targets.to(device=device).squeeze(1)
+        targets = targets.to(device=device).unsqueeze(1)
 
         # Forward
         output, hidden = model(data.unsqueeze(1))
-        print(output.shape)
-        exit()
         
-        # TODO:
-        ######################################
-        # Add regression layer in forward pass
-
-        mask = (targets > 0)
-        loss = criterion(output[mask],targets[mask])
+        mask = (targets > 0) # Mask does not work on the multi-dimensional tensor
+        loss = criterion(output,targets)
 
         #backward
         optimizer.zero_grad()
@@ -165,11 +163,12 @@ for epoch in epoch_bar:
 
     with torch.no_grad():
         test_rmse_list = []
-        for i, (data_, targets_) in enumerate(val_loader):
+        for i, (data_, targets_) in enumerate(test_loader):
             data_ = data_.to(device=device).squeeze(1)
-            targets_ = targets_.to(device=device).squeeze(1)
+            targets_ = targets_.to(device=device).unsqueeze(1)
             y_pred, hidden_ = model(data_.unsqueeze(1))
-            y_pred = y_pred[:,0,0]
+#            y_pred = y_pred[:,0,0]
+            mask = (targets_ > 0)
             MSE_ = criterion(y_pred,targets_)
             test_rmse_list.append(MSE_**(1/2))
     epoch_bar.set_postfix(loss=loss.cpu().item(),
@@ -180,7 +179,8 @@ for epoch in epoch_bar:
 y_pred, hidden_ = model(X_val.unsqueeze(1))
 y_pred = y_pred[:,0,0]
 print(type(y_pred))
-y_test_plot = (np.array(y_pred) * df["obs_val"].stdev()) + df["obs_val"].mean()
-plt.plot(y_test_plot)
-plt.plot(np.array(df["obs_val"]))
-plt.close()
+y_test_plot = (y_pred.cpu().detach().numpy() * np.mean(np.array(df["obs_val"]))) + np.mean(np.array(df["obs_val"]))
+plt.plot(y_test_plot, label="LSTM prediction")
+plt.plot(np.array(df["obs_val"]), label="observation")
+plt.legend()
+plt.show()

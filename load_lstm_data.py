@@ -4,7 +4,7 @@ import numpy as np
 import pickle as pkl
 
 def split_test_train(data_dict, year_test, year_val):
-    obs_drop = ['year','day','hour', 'x1', 'x2', 'p', 'lh']
+    obs_drop = ['year','day','hour', 'x1', 'x2', 'p', 'sm2']
     data_dict['obs_train'] = data_dict['obs'][~data_dict['obs']['year'].isin([year_test,year_val])]
     data_dict['obs_test'] = data_dict['obs'].loc[data_dict['obs']['year'] == year_test]
     data_dict['obs_val'] = data_dict['obs'].loc[data_dict['obs']['year'] == year_val]
@@ -28,7 +28,7 @@ def load_lstm_data(data_dir, site, year_test, year_val):
     forcing_f_path = data_dir+'forcing_'+s+'.txt' 
     with open(obs_f_path, 'r') as f:
         obs = pd.read_csv(f, header=None, delimiter=r"\s+")
-        obs.columns=['year','day','hour', 'x1', 'x2', 'lh', 'sm', 'p']
+        obs.columns=['year','day','hour', 'x1', 'x2', 'sm', 'sm2', 'p']
     with open(forcing_f_path, 'r') as f:
         forcing = pd.read_csv(f, header=None, delimiter=r"\s+")
         forcing.columns=['year','day','hour', 'wind', 'dummy', 'temp', 'humid', 'press', 'sw', 'lw', 'p']
