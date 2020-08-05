@@ -17,8 +17,8 @@ from tqdm import tqdm
 # Initialize stuff
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(1)
-hidden_state_size = 3
-num_epochs = 30
+hidden_state_size = 37
+num_epochs = 2
 num_features = 1
 batch_size = 64
 learning_rate = 0.001
@@ -40,7 +40,7 @@ y_train = torch.Tensor(scaler.fit_transform(df["obs_train"]))
 y_val = torch.Tensor(scaler.transform(df["obs_val"]))
 y_test = torch.Tensor(scaler.transform(df["obs_test"]))
 
-class LSTM(nn.Module):
+class LSTM_jf(nn.Module):
     def __init__(self, input_size: int, hidden_size: int):
         super().__init__()
         self.input_size = input_size
@@ -66,13 +66,13 @@ class LSTM(nn.Module):
         self.V_o = nn.Parameter(torch.Tensor(hidden_size, hidden_size))
         self.b_o = nn.Parameter(torch.Tensor(hidden_size))
 
+        self.init_weights()
+
         ###########################################################################################
         # Define fully connected layer from input size and output size
         # The output size will be the number of features to predict. more than 1 for multi-output.
         # Regression layer, predict output as linear reduction of hidden states.
-        self.fc = nn.Linear(hidden_size * input_size, n_features) # N x hidden_size x features  
-
-        self.init_weights()
+        self.fc = nn.Linear(hidden_size, num_features) # N x hidden_size x features  
 
     def init_weights(self):
         stdv = 1.0 / math.sqrt(self.hidden_size)
@@ -84,7 +84,7 @@ class LSTM(nn.Module):
         assumes x.shape represents (batch_size, sequence_size, input_size
         """
         batch_size, sequence_size, _ = x.size()
-        hidden_seq = []
+        hidden_sequence = []
 
         if init_states is None:
             h_t, c_t = (torch.zeros(batch_size, self.hidden_size).to(x.device),
@@ -99,7 +99,7 @@ class LSTM(nn.Module):
             f_t = torch.sigmoid(x_t @ self.U_f + h_t @ self.V_f + self.b_f)
             g_t = torch.tanh(x_t @ self.U_c + h_t @ self.V_c + self.b_c)
             o_t = torch.sigmoid(x_t @ self.U_o + h_t @ self.V_o + self.b_o)
-            c_t = f_t * c_t + i_t * g*t
+            c_t = f_t * c_t + i_t * g_t
             h_t = o_t * torch.tanh(c_t)
 
             hidden_sequence.append(h_t.unsqueeze(0))
@@ -109,11 +109,11 @@ class LSTM(nn.Module):
         hidden_sequence = hidden_sequence.transpose(0,1).contiguous()
 
         # Get sequence from fully conected layer.
-        hidden_sequence = self.fc(hidden_sequence)
+        prediction = self.fc(hidden_sequence)
 
-        return hidden_sequence, (h_t, c_t)
+        return prediction, (h_t, c_t)
 
-model = nn.LSTM(input_feature_size, hidden_state_size)
+model = LSTM_jf(input_feature_size, hidden_state_size).to(device)
 
 # set up the training data 
 ds_train = torch.utils.data.TensorDataset(X_train, y_train)
@@ -129,8 +129,8 @@ criterion = nn.MSELoss()  # Use costome loss function.
 
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
+y_pred, states = model(X_test.unsqueeze(1))
 epoch_bar = tqdm(range(num_epochs),desc="Training", position=0, total=2)
-acc = 0
 for epoch in epoch_bar:
     batch_bar = tqdm(enumerate(train_loader),
                      desc="Epoch: {}".format(str(epoch)),
@@ -144,10 +144,8 @@ for epoch in epoch_bar:
         targets = targets.to(device=device).unsqueeze(1)
 
         # Forward
-        output, hidden = model(data.unsqueeze(1))
-        
-        mask = (targets > 0) # Mask does not work on the multi-dimensional tensor
-        loss = criterion(output,targets)
+        y_pred, states = model(data.unsqueeze(1)) 
+        loss = criterion(y_pred,targets)
 
         #backward
         optimizer.zero_grad()
@@ -166,9 +164,7 @@ for epoch in epoch_bar:
         for i, (data_, targets_) in enumerate(test_loader):
             data_ = data_.to(device=device).squeeze(1)
             targets_ = targets_.to(device=device).unsqueeze(1)
-            y_pred, hidden_ = model(data_.unsqueeze(1))
-#            y_pred = y_pred[:,0,0]
-            mask = (targets_ > 0)
+            y_pred, states_ = model(data_.unsqueeze(1))
             MSE_ = criterion(y_pred,targets_)
             test_rmse_list.append(MSE_**(1/2))
     epoch_bar.set_postfix(loss=loss.cpu().item(),
@@ -176,9 +172,8 @@ for epoch in epoch_bar:
                           epoch=epoch)
     batch_bar.update()
 
-y_pred, hidden_ = model(X_val.unsqueeze(1))
-y_pred = y_pred[:,0,0]
-print(type(y_pred))
+y_pred, states = model(X_val.unsqueeze(1))
+y_pred = y_pred.squeeze(1)
 y_test_plot = (y_pred.cpu().detach().numpy() * np.mean(np.array(df["obs_val"]))) + np.mean(np.array(df["obs_val"]))
 plt.plot(y_test_plot, label="LSTM prediction")
 plt.plot(np.array(df["obs_val"]), label="observation")
