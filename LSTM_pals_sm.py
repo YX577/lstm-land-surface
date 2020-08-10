@@ -1,5 +1,5 @@
 #!/discover/nobackup/jframe/anaconda3/bin/python
-from load_lstm_data import load_lstm_data
+from load_lstm_data import load_pals_data
 import glob
 import math
 import matplotlib.pyplot as plt
@@ -18,7 +18,7 @@ from tqdm import tqdm
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(1)
 hidden_state_size = 37
-num_epochs = 2
+num_epochs = 5
 num_features = 1
 batch_size = 64
 learning_rate = 0.001
@@ -29,7 +29,7 @@ site = 2
 year_test = 2005
 year_val = 2006
 
-df = load_lstm_data(data_dir, site, year_test, year_val)
+df = load_pals_data(data_dir, site, year_test, year_val)
 
 scaler = StandardScaler()
 X_train = torch.Tensor(scaler.fit_transform(df["forcing_train"]))
@@ -125,11 +125,20 @@ val_loader = torch.utils.data.DataLoader(ds_val, batch_size=batch_size, shuffle=
 
 # Loss and optimizer
 criterion = nn.MSELoss()  # Use costome loss function. 
-#Use NSE rather than MSE, precalculate and cary through the varience
+# TODO:  Use NSE rather than MSE, precalculate and cary through the varience
 
+# Set the optimizer
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-y_pred, states = model(X_test.unsqueeze(1))
+# Now run the model. Run it once for fun on the whole training set.
+y_pred_test, states = model(X_test.unsqueeze(1))
+loss = criterion(y_pred_test.squeeze(1),y_test)
+optimizer.zero_grad()
+loss.backward()
+loss=loss.cpu().item()
+RMSE=loss**(1/2)
+print("Initial RMSE before batch training: {:.2f}".format(RMSE))
+# Loop and run the batches.
 epoch_bar = tqdm(range(num_epochs),desc="Training", position=0, total=2)
 for epoch in epoch_bar:
     batch_bar = tqdm(enumerate(train_loader),
@@ -160,22 +169,22 @@ for epoch in epoch_bar:
         batch_bar.update()
 
     with torch.no_grad():
-        test_rmse_list = []
+        rmse_list = []
         for i, (data_, targets_) in enumerate(test_loader):
             data_ = data_.to(device=device).squeeze(1)
             targets_ = targets_.to(device=device).unsqueeze(1)
-            y_pred, states_ = model(data_.unsqueeze(1))
-            MSE_ = criterion(y_pred,targets_)
-            test_rmse_list.append(MSE_**(1/2))
+            y_pred_, states_ = model(data_.unsqueeze(1))
+            MSE_ = criterion(y_pred_,targets_)
+            rmse_list.append(MSE_**(1/2))
     epoch_bar.set_postfix(loss=loss.cpu().item(),
-                          RMSE="{:.2f}".format(np.mean(np.array(test_rmse_list))),
+                          RMSE="{:.2f}".format(np.mean(np.array(rmse_list))),
                           epoch=epoch)
     batch_bar.update()
 
-y_pred, states = model(X_val.unsqueeze(1))
-y_pred = y_pred.squeeze(1)
-y_test_plot = (y_pred.cpu().detach().numpy() * np.mean(np.array(df["obs_val"]))) + np.mean(np.array(df["obs_val"]))
-plt.plot(y_test_plot, label="LSTM prediction")
+y_pred_val, states = model(X_val.unsqueeze(1))
+y_pred_val = y_pred_val.squeeze(1)
+y_plot_val = (y_pred_val.cpu().detach().numpy() * np.mean(np.array(df["obs_val"]))) + np.mean(np.array(df["obs_val"]))
+plt.plot(y_plot_val, label="LSTM prediction")
 plt.plot(np.array(df["obs_val"]), label="observation")
 plt.legend()
 plt.show()
