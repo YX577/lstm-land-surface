@@ -2,6 +2,8 @@
 import pandas as pd
 import numpy as np
 import pickle as pkl
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import OneHotEncoder
 
 def site_directories():
     # Directories for the PLUMBER-2 data
@@ -51,13 +53,22 @@ def load_plumber2_data(site, year_test, year_val):
     with open(obs_f_path, 'r') as f:
         obs = pd.read_csv(f, header=0)
         #obs.columns=['datetime', 'year', 'month', 'day', 'hour', 'minute', 'NEE', 'GPP', 'Qle', 'Qh']
-    obs_drop = ['year', 'month', 'day', 'hour', 'minute', 'GPP', 'Qle', 'Qh']
+    obs_drop = ['year', 'month', 'day', 'hour', 'minute', 'GPP', 'Qh', 'NEE']
     with open(forcing_f_path, 'r') as f:
         forcing = pd.read_csv(f, header=0)
         #forcing.columns=['datetime', 'year', 'month', 'day', 'hour', 'minute', 'Tair', 'SWdown', 'LWdown', 'VPD',
         #                 'Qair', 'Psurf', 'Precip', 'RH', 'CO2air', 'Wind',
         #                 'LAI_alternative','LAI',  'IGBP_veg_long']
     forcing_drop = ['year', 'day', 'minute']
+    
+    # Change IGBP to one hot encoding
+    label_encoder = LabelEncoder()
+    integer_encoded = label_encoder.fit_transform(forcing['IGBP_veg_long'])
+    onehot_encoder = OneHotEncoder(sparse=False)
+    integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
+    onehot_encoded = onehot_encoder.fit_transform(integer_encoded)
+    forcing['IGBP_veg_long'] = onehot_encoded
+    
     data_dict = {'obs':obs, 'forcing':forcing}
     data_dict = split_test_train(data_dict, year_test, year_val, obs_drop, forcing_drop)
     return data_dict
