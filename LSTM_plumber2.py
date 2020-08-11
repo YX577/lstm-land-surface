@@ -1,5 +1,5 @@
 #!/discover/nobackup/jframe/anaconda3/bin/python
-from load_lstm_data import load_plumber_data
+from load_lstm_data import load_plumber2_data
 import glob
 import math
 import matplotlib.pyplot as plt
@@ -24,13 +24,13 @@ batch_size = 64
 learning_rate = 0.001
 
 #import the test and training data as pandas dataframes for now.
-data_dir = '/discover/nobackup/jframe/data/plumber-2-flux-txt/'
-data_dir = '/discover/nobackup/jframe/data/plumber-2-met-txt/'
-site = 2
-year_test = 2005
-year_val = 2006
+flux_dir = '/discover/nobackup/jframe/data/plumber-2-flux-txt/'
+met_dir = '/discover/nobackup/jframe/data/plumber-2-met-txt/'
+site = 'DE-Geb_2001-2014_FLUXNET2015'
+year_test = 2013
+year_val = 2014
 
-df = load_plumber_data(data_dir, site, year_test, year_val)
+df = load_plumber2_data(site, year_test, year_val)
 
 scaler = StandardScaler()
 X_train = torch.Tensor(scaler.fit_transform(df["forcing_train"]))
@@ -185,7 +185,7 @@ for epoch in epoch_bar:
 y_pred_val, states = model(X_val.unsqueeze(1))
 y_pred_val = y_pred_val.squeeze(1)
 y_plot_val = (y_pred_val.cpu().detach().numpy() * np.mean(np.array(df["obs_val"]))) + np.mean(np.array(df["obs_val"]))
-plt.plot(y_plot_val, label="LSTM prediction")
-plt.plot(np.array(df["obs_val"]), label="observation")
+plt.plot(np.array(df["obs_val"]), label="observation", linewidth=.5)
+plt.plot(y_plot_val, label="LSTM prediction", linewidth=.5)
 plt.legend()
 plt.show()
