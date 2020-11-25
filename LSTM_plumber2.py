@@ -18,7 +18,7 @@ from tqdm import tqdm
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(1)
 hidden_state_size = 37
-num_epochs = 5
+num_epochs = 50
 num_features = 1
 batch_size = 64
 learning_rate = 0.001
